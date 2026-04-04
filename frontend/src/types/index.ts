@@ -1,4 +1,5 @@
 export type WorkType = "remote" | "hybrid" | "onsite" | "any";
+export type Region = "uk" | "eu" | "global";
 
 export interface SearchRequest {
   query: string;
@@ -7,6 +8,7 @@ export interface SearchRequest {
   page: number;
   results_per_page: number;
   max_applicants?: number;
+  region?: Region;
 }
 
 export interface Job {
@@ -24,6 +26,8 @@ export interface Job {
   applicant_count?: number;
   applicant_count_label?: string;
   applicant_count_source?: string;
+  uk_visa_sponsor?: boolean;
+  uk_sponsor_city?: string;
 }
 
 export interface SearchResponse {
@@ -33,4 +37,12 @@ export interface SearchResponse {
   query: string;
   sources_searched: string[];
   errors: string[];
+}
+
+export interface CompanyEntry {
+  name: string;
+  career_url: string;
+  ats: string;
+  country: string;
+  sector: string;
 }

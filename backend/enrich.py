@@ -120,6 +120,23 @@ async def enrich_job(client: httpx.AsyncClient, job: Job) -> Job:
     return job
 
 
+def enrich_visa_sponsors(jobs: list[Job]) -> list[Job]:
+    """
+    Tag each job with uk_visa_sponsor = True/False/None.
+    None means the register isn't loaded yet (non-blocking).
+    """
+    from .visa_sponsors import is_sponsor, sponsor_count
+    if sponsor_count() == 0:
+        return jobs  # register not loaded; skip silently
+
+    for job in jobs:
+        found, details = is_sponsor(job.company)
+        job.uk_visa_sponsor = found
+        if found and details:
+            job.uk_sponsor_city = details.get("city", "")
+    return jobs
+
+
 async def enrich_jobs(jobs: list[Job], concurrency: int = 5) -> list[Job]:
     """
     Enrich jobs with applicant counts concurrently.

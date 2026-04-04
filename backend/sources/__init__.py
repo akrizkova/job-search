@@ -5,6 +5,9 @@ from .jsearch import JSearchSource
 from .greenhouse import GreenhouseSource
 from .lever import LeverSource
 from .scraper import CareerPageScraper
+from .workday import WorkdaySource
+from .smartrecruiters import SmartRecruitersSource
+from .ashby import AshbySource
 
 __all__ = [
     "RemotiveSource",
@@ -14,4 +17,7 @@ __all__ = [
     "GreenhouseSource",
     "LeverSource",
     "CareerPageScraper",
+    "WorkdaySource",
+    "SmartRecruitersSource",
+    "AshbySource",
 ]

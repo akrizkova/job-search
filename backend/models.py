@@ -34,6 +34,8 @@ class Job(BaseModel):
     applicant_count: Optional[int] = None        # exact number when available
     applicant_count_label: Optional[str] = None  # e.g. "Over 200 applicants", "Be an early applicant"
     applicant_count_source: Optional[str] = None # where the count came from
+    uk_visa_sponsor: Optional[bool] = None       # True = confirmed Skilled Worker sponsor
+    uk_sponsor_city: Optional[str] = None        # city from the register (helps confirm UK office)
 
 
 class SearchResponse(BaseModel):

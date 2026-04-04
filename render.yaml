@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: jobfind
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      # Optional — add these in the Render dashboard for extra job sources:
+      # - key: ADZUNA_APP_ID
+      #   value: your-app-id          # developer.adzuna.com (free)
+      # - key: ADZUNA_APP_KEY
+      #   value: your-app-key
+      # - key: JSEARCH_API_KEY
+      #   value: your-rapidapi-key    # rapidapi.com/jsearch (adds LinkedIn/Indeed/Glassdoor)
+      - key: PORT
+        value: "8000"
+    healthCheckPath: /api/health

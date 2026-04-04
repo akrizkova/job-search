@@ -1,9 +1,16 @@
 import asyncio
 import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
 from .models import SearchRequest, SearchResponse, Job, WorkType
-from .enrich import enrich_jobs
+from .enrich import enrich_jobs, enrich_visa_sponsors
+from .visa_sponsors import ensure_loaded as load_sponsors, sponsor_count
 from .sources import (
     RemotiveSource,
     RemoteOKSource,
@@ -12,9 +19,22 @@ from .sources import (
     GreenhouseSource,
     LeverSource,
     CareerPageScraper,
+    WorkdaySource,
+    SmartRecruitersSource,
+    AshbySource,
 )
 
-app = FastAPI(title="Job Search Aggregator", version="1.0.0")
+STATIC_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Pre-load the UK visa sponsor register in the background on startup
+    asyncio.create_task(load_sponsors())
+    yield
+
+
+app = FastAPI(title="Job Search Aggregator", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,17 +43,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Build sources list from environment config
+
 def build_sources(company_urls: list[str] = None):
     sources = []
 
-    # Always-on free sources
+    # Always-on free sources (job boards)
     sources.append(RemotiveSource())
     sources.append(RemoteOKSource())
+
+    # Always-on ATS sources (direct company career pages)
     sources.append(GreenhouseSource())
     sources.append(LeverSource())
+    sources.append(WorkdaySource())
+    sources.append(SmartRecruitersSource())
+    sources.append(AshbySource())
 
-    # Optional: Adzuna (requires free API key)
+    # Optional: Adzuna (requires free API key — developer.adzuna.com)
     adzuna_id = os.getenv("ADZUNA_APP_ID")
     adzuna_key = os.getenv("ADZUNA_APP_KEY")
     if adzuna_id and adzuna_key:
@@ -44,7 +69,7 @@ def build_sources(company_urls: list[str] = None):
     if jsearch_key:
         sources.append(JSearchSource(jsearch_key))
 
-    # Optional: custom company URLs
+    # Optional: custom company URLs submitted by the user
     if company_urls:
         sources.append(CareerPageScraper(company_urls))
 
@@ -52,7 +77,6 @@ def build_sources(company_urls: list[str] = None):
 
 
 def deduplicate(jobs: list[Job]) -> list[Job]:
-    """Remove duplicates by normalizing title+company combinations."""
     seen: set[str] = set()
     unique = []
     for job in jobs:
@@ -91,24 +115,25 @@ async def search_jobs(request: SearchRequest):
         else:
             all_jobs.extend(jobs)
 
-    # Apply work type filter post-fetch (for sources that don't support it natively)
+    # Work type filter
     if request.work_type != WorkType.any:
         all_jobs = [
             j for j in all_jobs
             if j.work_type == request.work_type.value
-            or (request.work_type == WorkType.remote and j.work_type == "remote")
         ]
 
     all_jobs = deduplicate(all_jobs)
 
-    # Enrich with applicant counts (best-effort, won't fail the request)
+    # Enrich: applicant counts (best-effort HTTP)
     try:
         all_jobs = await enrich_jobs(all_jobs)
     except Exception:
         pass
 
-    # Filter by applicant count — keep jobs where count is unknown OR within limit.
-    # Unknown count = we couldn't fetch it, so we include it rather than hiding it.
+    # Enrich: UK visa sponsor status (in-memory, fast)
+    all_jobs = enrich_visa_sponsors(all_jobs)
+
+    # Filter by applicant count
     if request.max_applicants is not None:
         all_jobs = [
             j for j in all_jobs
@@ -132,7 +157,6 @@ async def search_jobs(request: SearchRequest):
 
 @app.post("/api/search/companies", response_model=SearchResponse)
 async def search_company_sites(request: SearchRequest, company_urls: list[str] = None):
-    """Search specific company career pages by URL."""
     if not company_urls:
         raise HTTPException(status_code=400, detail="No company URLs provided")
 
@@ -148,6 +172,8 @@ async def search_company_sites(request: SearchRequest, company_urls: list[str] =
         errors.append(str(e))
         jobs = []
 
+    jobs = enrich_visa_sponsors(jobs)
+
     return SearchResponse(
         jobs=jobs,
         total=len(jobs),
@@ -158,23 +184,53 @@ async def search_company_sites(request: SearchRequest, company_urls: list[str] =
     )
 
 
+@app.get("/api/companies")
+async def lookup_companies(q: str = "", region: str = ""):
+    """Look up companies from the curated directory by name/sector."""
+    from .sources.company_directory import COMPANY_DIRECTORY
+    results = []
+    q_lower = q.lower()
+    for entry in COMPANY_DIRECTORY:
+        if q_lower and q_lower not in entry.name.lower() and q_lower not in entry.sector.lower():
+            continue
+        if region and entry.country not in (region, "global"):
+            continue
+        results.append({
+            "name": entry.name,
+            "career_url": entry.career_url,
+            "ats": entry.ats,
+            "country": entry.country,
+            "sector": entry.sector,
+        })
+    return {"companies": results[:50]}
+
+
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "visa_sponsors_loaded": sponsor_count() > 0,
+        "visa_sponsor_count": sponsor_count(),
+    }
 
 
 @app.get("/api/sources")
 async def list_sources():
     sources = build_sources()
-    configured = []
-    available = []
-    for s in sources:
-        if isinstance(s, (AdzunaSource, JSearchSource)):
-            configured.append(s.name)
-        else:
-            available.append(s.name)
     return {
         "active": [s.name for s in sources],
-        "configured_paid": configured,
-        "always_free": available,
+        "visa_sponsors_loaded": sponsor_count() > 0,
     }
+
+
+# ── Serve the React SPA (must come LAST so API routes take priority) ──────────
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str = ""):
+        # Let /api/* fall through to 404 rather than serving the SPA
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        return FileResponse(str(STATIC_DIR / "index.html"))
