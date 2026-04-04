@@ -1,4 +1,4 @@
-import { ExternalLink, MapPin, Building2, Clock, DollarSign } from "lucide-react";
+import { ExternalLink, MapPin, Building2, Clock, DollarSign, Users } from "lucide-react";
 import type { Job } from "../types";
 
 const WORK_TYPE_STYLES: Record<string, string> = {
@@ -23,6 +23,35 @@ function formatDate(raw?: string): string {
   }
 }
 
+function ApplicantBadge({ count, label }: { count?: number; label?: string }) {
+  if (!label && count == null) return null;
+
+  const displayLabel = label || `${count!.toLocaleString()} applicants`;
+  const isEarly = label?.toLowerCase().includes("early");
+  const n = count ?? (isEarly ? 0 : 999);
+
+  let style: string;
+  let icon = <Users size={11} />;
+
+  if (isEarly || n < 25) {
+    // Green — low competition
+    style = "bg-emerald-900/60 text-emerald-300 border-emerald-700";
+  } else if (n < 100) {
+    // Yellow — moderate
+    style = "bg-yellow-900/60 text-yellow-300 border-yellow-700";
+  } else {
+    // Red — high competition
+    style = "bg-red-900/60 text-red-400 border-red-800";
+  }
+
+  return (
+    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border font-medium ${style}`}>
+      {icon}
+      {displayLabel}
+    </span>
+  );
+}
+
 export function JobCard({ job }: { job: Job }) {
   const workTypeStyle = job.work_type ? WORK_TYPE_STYLES[job.work_type] ?? "" : "";
   const postedAt = formatDate(job.posted_at);
@@ -32,15 +61,19 @@ export function JobCard({ job }: { job: Job }) {
       hover:border-indigo-600/50 hover:bg-gray-800/50 transition-all duration-200">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <a
-            href={job.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold text-white hover:text-indigo-400 transition line-clamp-2
-              group-hover:text-indigo-400"
-          >
-            {job.title}
-          </a>
+          <div className="flex items-start gap-2 flex-wrap">
+            <a
+              href={job.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-white hover:text-indigo-400 transition line-clamp-2
+                group-hover:text-indigo-400"
+            >
+              {job.title}
+            </a>
+            {/* Applicant count — shown right next to title for quick scanning */}
+            <ApplicantBadge count={job.applicant_count} label={job.applicant_count_label} />
+          </div>
 
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-400">
             <span className="flex items-center gap-1">

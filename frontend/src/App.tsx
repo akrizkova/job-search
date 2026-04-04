@@ -12,13 +12,14 @@ export default function App() {
   const [showSources, setShowSources] = useState(false);
   const [showCompanySearch, setShowCompanySearch] = useState(false);
 
-  const handleSearch = (query: string, location: string, workType: WorkType) => {
+  const handleSearch = (query: string, location: string, workType: WorkType, maxApplicants: number | undefined) => {
     const req: SearchRequest = {
       query,
       location: location || undefined,
       work_type: workType,
       page: 1,
       results_per_page: 20,
+      max_applicants: maxApplicants,
     };
     setLastReq(req);
     search(req);

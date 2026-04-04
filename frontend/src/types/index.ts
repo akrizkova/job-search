@@ -6,6 +6,7 @@ export interface SearchRequest {
   work_type: WorkType;
   page: number;
   results_per_page: number;
+  max_applicants?: number;
 }
 
 export interface Job {
@@ -20,6 +21,9 @@ export interface Job {
   posted_at?: string;
   salary?: string;
   tags: string[];
+  applicant_count?: number;
+  applicant_count_label?: string;
+  applicant_count_source?: string;
 }
 
 export interface SearchResponse {

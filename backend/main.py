@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from .models import SearchRequest, SearchResponse, Job, WorkType
+from .enrich import enrich_jobs
 from .sources import (
     RemotiveSource,
     RemoteOKSource,
@@ -99,6 +100,20 @@ async def search_jobs(request: SearchRequest):
         ]
 
     all_jobs = deduplicate(all_jobs)
+
+    # Enrich with applicant counts (best-effort, won't fail the request)
+    try:
+        all_jobs = await enrich_jobs(all_jobs)
+    except Exception:
+        pass
+
+    # Filter by applicant count — keep jobs where count is unknown OR within limit.
+    # Unknown count = we couldn't fetch it, so we include it rather than hiding it.
+    if request.max_applicants is not None:
+        all_jobs = [
+            j for j in all_jobs
+            if j.applicant_count is None or j.applicant_count <= request.max_applicants
+        ]
 
     # Paginate
     start = (request.page - 1) * request.results_per_page

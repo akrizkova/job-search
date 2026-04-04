@@ -6,6 +6,7 @@ import httpx
 from typing import Optional
 from .base import BaseJobSource
 from ..models import Job, WorkType
+from ..enrich import label_from_jsearch
 
 WORK_TYPE_MAP = {
     WorkType.remote: "TELECOMMUTE",
@@ -60,6 +61,7 @@ class JSearchSource(BaseJobSource):
                 period = item.get("job_salary_period", "year")
                 salary = f"${item['job_min_salary']:,.0f} – ${item['job_max_salary']:,.0f}/{period}"
 
+            apply_count, apply_label = label_from_jsearch(item)
             jobs.append(
                 Job(
                     id=f"jsearch_{job_id}",
@@ -75,6 +77,9 @@ class JSearchSource(BaseJobSource):
                     posted_at=item.get("job_posted_at_datetime_utc", ""),
                     salary=salary,
                     tags=item.get("job_required_skills") or [],
+                    applicant_count=apply_count,
+                    applicant_count_label=apply_label,
+                    applicant_count_source="JSearch" if apply_count is not None else None,
                 )
             )
         return jobs

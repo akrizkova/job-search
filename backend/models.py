@@ -16,6 +16,7 @@ class SearchRequest(BaseModel):
     work_type: WorkType = WorkType.any
     page: int = 1
     results_per_page: int = 20
+    max_applicants: Optional[int] = None  # e.g. 100 — exclude listings with more applicants
 
 
 class Job(BaseModel):
@@ -30,6 +31,9 @@ class Job(BaseModel):
     posted_at: Optional[str] = None
     salary: Optional[str] = None
     tags: list[str] = []
+    applicant_count: Optional[int] = None        # exact number when available
+    applicant_count_label: Optional[str] = None  # e.g. "Over 200 applicants", "Be an early applicant"
+    applicant_count_source: Optional[str] = None # where the count came from
 
 
 class SearchResponse(BaseModel):
