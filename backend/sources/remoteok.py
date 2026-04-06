@@ -29,7 +29,7 @@ class RemoteOKSource(BaseJobSource):
             resp.raise_for_status()
             data = resp.json()
 
-        query_lower = query.lower()
+        query_words = query.lower().split()
         jobs = []
         for item in data:
             if not isinstance(item, dict) or "id" not in item:
@@ -39,10 +39,10 @@ class RemoteOKSource(BaseJobSource):
             tags = item.get("tags") or []
             if isinstance(tags, list):
                 tags = [str(t) for t in tags]
+            desc = item.get("description", "")[:300]
 
-            # Basic relevance filter
-            searchable = f"{title} {company} {' '.join(tags)}".lower()
-            if query_lower not in searchable:
+            searchable = f"{title} {company} {' '.join(tags)} {desc}".lower()
+            if not all(w in searchable for w in query_words):
                 continue
 
             job_id = str(item.get("id", ""))
@@ -53,7 +53,7 @@ class RemoteOKSource(BaseJobSource):
                     company=company,
                     location=item.get("location") or "Remote",
                     work_type="remote",
-                    description=item.get("description", "")[:500],
+                    description=desc,
                     url=item.get("url", f"https://remoteok.com/remote-jobs/{job_id}"),
                     source=self.name,
                     posted_at=item.get("date", ""),
@@ -61,7 +61,7 @@ class RemoteOKSource(BaseJobSource):
                     tags=tags[:10],
                 )
             )
-            if len(jobs) >= 20:
+            if len(jobs) >= 300:  # cap after matching, not before
                 break
 
         return jobs

@@ -23,7 +23,7 @@ class RemotiveSource(BaseJobSource):
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
                 self.BASE_URL,
-                params={"search": query, "limit": 20},
+                params={"search": query, "limit": 100},
             )
             resp.raise_for_status()
             data = resp.json()

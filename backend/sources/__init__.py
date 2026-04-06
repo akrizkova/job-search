@@ -8,6 +8,7 @@ from .scraper import CareerPageScraper
 from .workday import WorkdaySource
 from .smartrecruiters import SmartRecruitersSource
 from .ashby import AshbySource
+from .arbeitnow import ArbeitnowSource
 
 __all__ = [
     "RemotiveSource",
@@ -20,4 +21,5 @@ __all__ = [
     "WorkdaySource",
     "SmartRecruitersSource",
     "AshbySource",
+    "ArbeitnowSource",
 ]

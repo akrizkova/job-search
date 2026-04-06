@@ -10,16 +10,29 @@ from ..models import Job, WorkType
 
 # Well-known companies using Greenhouse (add more as needed)
 GREENHOUSE_COMPANIES = [
+    # US Tech / Infra
     "airbnb", "stripe", "coinbase", "figma", "notion", "linear",
     "vercel", "supabase", "planetscale", "neon", "clerk", "resend",
     "discord", "twitch", "reddit", "dropbox", "box", "hubspot",
     "datadog", "hashicorp", "mongodb", "elastic", "confluent",
     "snowflake", "databricks", "dbt-labs", "airbyte", "fivetran",
-    "anthropic", "scale-ai", "weights-and-biases", "huggingface",
-    "openai", "mistral", "cohere", "together", "modal",
     "netlify", "render", "railway", "fly", "cloudflare",
     "github", "gitlab", "jetbrains", "sentry", "posthog",
     "loom", "miro", "airtable", "webflow", "framer",
+    "grafana", "temporal", "buf", "turso", "novu",
+    # AI / ML
+    "anthropic", "scale-ai", "weights-and-biases", "huggingface",
+    "openai", "cohere", "together", "modal", "mistral",
+    "coreweave", "runwayml",
+    # UK / EU Tech
+    "deliveroo", "darktrace", "graphcore", "tractable", "tessian",
+    "jagex", "king", "asos", "trustpilot", "spotify", "kry",
+    "supercell", "helsing", "onfido", "farfetch", "thought-machine",
+    "clearscore",
+    # Remote-first / Creator economy
+    "automattic", "doist", "buffer", "hotjar", "toptal",
+    # Gaming
+    "riotgames",
 ]
 
 
@@ -53,9 +66,13 @@ class GreenhouseSource(BaseJobSource):
                 except Exception:
                     continue
 
+                query_words = query_lower.split()
                 for item in data.get("jobs", []):
                     title = item.get("title", "")
-                    if query_lower not in title.lower():
+                    depts = " ".join(d.get("name", "") for d in item.get("departments", []))
+                    desc = item.get("content", "")[:400]
+                    searchable = f"{title} {depts} {desc}".lower()
+                    if not all(w in searchable for w in query_words):
                         continue
 
                     loc_name = ""

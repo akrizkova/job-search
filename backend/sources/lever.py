@@ -9,15 +9,24 @@ from ..models import Job, WorkType
 
 # Well-known companies using Lever (add more as needed)
 LEVER_COMPANIES = [
-    "netflix", "twitter", "lyft", "instacart", "robinhood",
+    # US Tech
+    "netflix", "lyft", "instacart", "robinhood",
     "plaid", "brex", "rippling", "gusto", "lattice",
     "carta", "deel", "remote", "mercury", "ramp",
-    "anduril", "scale", "nuro", "waymo", "cruise",
+    "anduril", "scale", "waymo", "cruise",
     "flexport", "faire", "attentive", "klaviyo", "sendbird",
     "amplitude", "mixpanel", "heap", "fullstory", "statsig",
     "lacework", "wiz", "snyk", "semgrep", "chainguard",
     "coda", "retool", "glean", "moveworks", "writer",
     "perplexity", "adept", "inflection", "character",
+    # UK / EU
+    "sky", "guardian", "behavox", "improbable", "faculty",
+    "unmind", "cleo", "nested", "memrise", "onfido",
+    "farfetch", "gorillas", "voi", "rovio", "deepl", "aircall",
+    # Remote-first
+    "doist", "buffer", "hotjar", "automattic", "canonical",
+    # Gaming
+    "unity",
 ]
 
 
@@ -57,15 +66,16 @@ class LeverSource(BaseJobSource):
                 if not isinstance(data, list):
                     continue
 
+                query_words = query_lower.split()
                 for item in data:
                     title = item.get("text", "")
-                    if query_lower not in title.lower():
-                        continue
-
-                    categories = item.get("categories", {})
                     loc = categories.get("location", "")
                     commitment = categories.get("commitment", "")
                     team = categories.get("team", "")
+                    desc = item.get("description", "")[:400]
+                    searchable = f"{title} {team} {commitment} {desc}".lower()
+                    if not all(w in searchable for w in query_words):
+                        continue
 
                     combined = f"{title} {loc} {commitment}".lower()
                     if "remote" in combined:

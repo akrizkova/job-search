@@ -22,6 +22,7 @@ from .sources import (
     WorkdaySource,
     SmartRecruitersSource,
     AshbySource,
+    ArbeitnowSource,
 )
 
 STATIC_DIR = Path(__file__).parent.parent / "frontend" / "dist"
@@ -47,9 +48,10 @@ app.add_middleware(
 def build_sources(company_urls: list[str] = None):
     sources = []
 
-    # Always-on free sources (job boards)
+    # Always-on free sources (job boards + broad aggregators)
     sources.append(RemotiveSource())
     sources.append(RemoteOKSource())
+    sources.append(ArbeitnowSource())
 
     # Always-on ATS sources (direct company career pages)
     sources.append(GreenhouseSource())
