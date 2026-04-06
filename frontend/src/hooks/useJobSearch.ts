@@ -1,5 +1,11 @@
 import { useState, useCallback, useRef } from "react";
 import type { SearchRequest, SearchResponse } from "../types";
+import { staticSearch } from "../lib/staticSources";
+
+// When VITE_API_URL is empty (GitHub Pages), use browser-direct API calls.
+// When running locally with the backend, use /api/search.
+const API_BASE = import.meta.env.VITE_API_URL ?? "";
+const IS_STATIC = !API_BASE && !window.location.hostname.includes("localhost");
 
 export function useJobSearch() {
   const [results, setResults] = useState<SearchResponse | null>(null);
@@ -11,19 +17,34 @@ export function useJobSearch() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req),
-      });
-      if (!resp.ok) throw new Error(`Search failed: ${resp.statusText}`);
-      const data: SearchResponse = await resp.json();
+      let data: SearchResponse;
+
+      if (IS_STATIC) {
+        // GitHub Pages / no backend — call APIs directly from the browser
+        const result = await staticSearch(req);
+        data = {
+          jobs: result.jobs,
+          total: result.jobs.length,
+          page: 1,
+          query: req.query,
+          sources_searched: result.sources_searched,
+          errors: result.errors,
+        };
+      } else {
+        const resp = await fetch(`${API_BASE}/api/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(req),
+        });
+        if (!resp.ok) throw new Error(`Search failed: ${resp.statusText}`);
+        data = await resp.json();
+      }
 
       if (append && accumulatedJobs.current) {
         const merged: SearchResponse = {
           ...data,
           jobs: [...accumulatedJobs.current.jobs, ...data.jobs],
-          total: accumulatedJobs.current.total + data.total,
+          total: accumulatedJobs.current.total + data.jobs.length,
           sources_searched: [
             ...new Set([
               ...accumulatedJobs.current.sources_searched,
@@ -47,13 +68,14 @@ export function useJobSearch() {
 
   const searchCompanySites = useCallback(
     async (req: SearchRequest, companyUrls: string[]) => {
+      if (IS_STATIC) return; // not available in static mode
       setLoading(true);
       setError(null);
       try {
         const params = companyUrls
           .map((u) => `company_urls=${encodeURIComponent(u)}`)
           .join("&");
-        const resp = await fetch(`/api/search/companies?${params}`, {
+        const resp = await fetch(`${API_BASE}/api/search/companies?${params}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(req),
