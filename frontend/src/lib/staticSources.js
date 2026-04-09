@@ -18,6 +18,71 @@ function matchesQuery(query, ...fields) {
         .filter(Boolean)
         .every((word) => combined.includes(word));
 }
+// ── Region filtering ──────────────────────────────────────────────────────────
+const EU_KEYWORDS = [
+    // EU member states
+    "austria", "belgium", "bulgaria", "croatia", "cyprus", "czech",
+    "denmark", "estonia", "finland", "france", "germany", "greece",
+    "hungary", "ireland", "italy", "latvia", "lithuania", "luxembourg",
+    "malta", "netherlands", "poland", "portugal", "romania", "slovakia",
+    "slovenia", "spain", "sweden",
+    // EEA / closely associated
+    "norway", "iceland", "switzerland",
+    // Major EU/EEA cities
+    "amsterdam", "rotterdam", "eindhoven", "utrecht", "antwerp", "ghent",
+    "berlin", "munich", "hamburg", "frankfurt", "cologne", "düsseldorf",
+    "stuttgart", "paris", "lyon", "marseille", "toulouse", "bordeaux",
+    "madrid", "barcelona", "seville", "valencia", "bilbao",
+    "rome", "milan", "turin", "naples", "florence",
+    "vienna", "graz", "linz",
+    "warsaw", "krakow", "wroclaw", "poznan", "gdansk", "lodz",
+    "prague", "brno", "budapest",
+    "lisbon", "porto",
+    "stockholm", "gothenburg", "malmo",
+    "helsinki", "tampere",
+    "oslo", "bergen",
+    "copenhagen", "aarhus",
+    "dublin", "cork",
+    "brussels", "liege",
+    "zurich", "geneva", "basel",
+    "bucharest", "cluj",
+    "sofia", "zagreb", "ljubljana", "bratislava", "tallinn", "riga", "vilnius",
+    "athens", "thessaloniki",
+    // Generic terms
+    "europe", "european", "emea", "eu",
+];
+const UK_KEYWORDS = [
+    "united kingdom", " uk", "england", "scotland", "wales", "northern ireland",
+    "great britain", "britain",
+    // Cities
+    "london", "manchester", "birmingham", "leeds", "glasgow", "edinburgh",
+    "liverpool", "bristol", "sheffield", "cambridge", "oxford", "brighton",
+    "cardiff", "newcastle", "nottingham", "reading", "guildford", "bath",
+    "coventry", "belfast", "leicester", "southampton", "portsmouth",
+    "bournemouth", "exeter", "york", "hull", "stoke", "derby", "plymouth",
+];
+/**
+ * Returns true if a job passes the region filter.
+ * - global: everything passes
+ * - remote jobs: always pass (can be done from any region)
+ * - eu: location must match an EU/EEA country or city
+ * - uk: location must match a UK city or country name
+ * - unknown location ("See posting"): included (can't filter what we don't know)
+ */
+function passesRegionFilter(loc, wtype, region) {
+    if (region === "global")
+        return true;
+    if (wtype === "remote")
+        return true; // remote jobs are region-agnostic
+    if (!loc || loc === "See posting")
+        return true; // unknown — give benefit of doubt
+    const l = loc.toLowerCase();
+    if (region === "eu")
+        return EU_KEYWORDS.some((k) => l.includes(k));
+    if (region === "uk")
+        return UK_KEYWORDS.some((k) => l.includes(k));
+    return true;
+}
 // ── Greenhouse ───────────────────────────────────────────────────────────────
 const GREENHOUSE_IDS = [
     // US Tech
@@ -43,6 +108,7 @@ const GREENHOUSE_IDS = [
     "grafana", "temporal",
 ];
 async function searchGreenhouse(req) {
+    const region = req.region ?? "global";
     const jobs = [];
     await Promise.allSettled(GREENHOUSE_IDS.map(async (id) => {
         const r = await fetch(`https://boards-api.greenhouse.io/v1/boards/${id}/jobs?content=true`);
@@ -51,8 +117,9 @@ async function searchGreenhouse(req) {
         const data = await r.json();
         for (const item of data.jobs ?? []) {
             const title = item.title ?? "";
+            // Strip leading numeric dept IDs e.g. "1135 Accelerate" → "Accelerate"
             const depts = (item.departments ?? [])
-                .map((d) => d.name)
+                .map((d) => d.name.replace(/^\d+\s+/, ""))
                 .join(" ");
             const desc = (item.content ?? "").slice(0, 400);
             if (!matchesQuery(req.query, title, depts, desc))
@@ -69,6 +136,8 @@ async function searchGreenhouse(req) {
                 !loc.toLowerCase().includes(req.location.toLowerCase()) &&
                 wtype !== "remote")
                 continue;
+            if (!passesRegionFilter(loc, wtype, region))
+                continue;
             jobs.push({
                 id: `gh_${md5short(item.absolute_url ?? id + title)}`,
                 title,
@@ -78,7 +147,8 @@ async function searchGreenhouse(req) {
                 url: item.absolute_url ?? "",
                 source: "Greenhouse",
                 posted_at: item.updated_at ?? "",
-                tags: (item.departments ?? []).map((d) => d.name),
+                // Strip numeric IDs from displayed tags too
+                tags: (item.departments ?? []).map((d) => d.name.replace(/^\d+\s+/, "")),
             });
         }
     }));
@@ -103,6 +173,7 @@ const LEVER_IDS = [
     "riotgames", "unity",
 ];
 async function searchLever(req) {
+    const region = req.region ?? "global";
     const jobs = [];
     await Promise.allSettled(LEVER_IDS.map(async (id) => {
         const r = await fetch(`https://api.lever.co/v0/postings/${id}?mode=json`);
@@ -131,6 +202,8 @@ async function searchLever(req) {
             if (req.location &&
                 !loc.toLowerCase().includes(req.location.toLowerCase()) &&
                 wtype !== "remote")
+                continue;
+            if (!passesRegionFilter(loc, wtype, region))
                 continue;
             jobs.push({
                 id: `lv_${md5short(item.hostedUrl ?? id + title)}`,
@@ -172,6 +245,7 @@ const ASHBY_IDS = [
     "grafana", "aircall",
 ];
 async function searchAshby(req) {
+    const region = req.region ?? "global";
     const jobs = [];
     await Promise.allSettled(ASHBY_IDS.map(async (id) => {
         const r = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${id}?includeCompensation=true`);
@@ -195,6 +269,8 @@ async function searchAshby(req) {
             if (req.work_type !== "any" && wtype !== req.work_type)
                 continue;
             if (req.location && !loc.toLowerCase().includes(req.location.toLowerCase()) && !isRemote)
+                continue;
+            if (!passesRegionFilter(loc, wtype, region))
                 continue;
             const comp = item.compensation ?? {};
             let salary = "";
@@ -227,6 +303,7 @@ async function searchRemotive(req) {
     if (!r.ok)
         return [];
     const data = await r.json();
+    // Remotive jobs are always remote — they pass region filter automatically
     return (data.jobs ?? []).map((item) => ({
         id: `rm_${md5short(String(item.url ?? item.id ?? Math.random()))}`,
         title: String(item.title ?? ""),
@@ -262,6 +339,7 @@ async function searchRemoteOK(req) {
             if (!matchesQuery(req.query, title, company, tags.join(" "), desc))
                 continue;
             const jobId = String(item.id ?? "");
+            // RemoteOK jobs are always remote — they pass region filter automatically
             jobs.push({
                 id: `rok_${md5short(jobId || title + company)}`,
                 title,
@@ -285,6 +363,7 @@ async function searchRemoteOK(req) {
 }
 // ── Arbeitnow ────────────────────────────────────────────────────────────────
 async function searchArbeitnow(req) {
+    const region = req.region ?? "global";
     const pages = [1, 2, 3];
     const settled = await Promise.allSettled(pages.map((p) => fetch(`https://arbeitnow.com/api/job-board-api?page=${p}`).then((r) => r.ok ? r.json() : { data: [] })));
     const jobs = [];
@@ -304,6 +383,8 @@ async function searchArbeitnow(req) {
             if (req.work_type !== "any" && wtype !== req.work_type)
                 continue;
             if (req.location && !loc.toLowerCase().includes(req.location.toLowerCase()) && !isRemote)
+                continue;
+            if (!passesRegionFilter(loc, wtype, region))
                 continue;
             const url = item.url ?? "";
             jobs.push({
@@ -326,6 +407,7 @@ async function searchArbeitnow(req) {
 async function searchJustJoin(req) {
     if (req.work_type === "onsite" && req.location === "")
         return [];
+    const region = req.region ?? "global";
     try {
         const r = await fetch("https://justjoin.it/api/offers");
         if (!r.ok)
@@ -343,16 +425,25 @@ async function searchJustJoin(req) {
             const category = String(item.marker_icon ?? "");
             if (!matchesQuery(req.query, title, company, skills.join(" "), category))
                 continue;
-            const isRemote = item.remote_interview === true || /remote/i.test(city);
+            // Fix: use marker_icon === "remote" for actual remote work,
+            // not remote_interview (which is just interview mode)
+            const isRemote = item.marker_icon === "remote" || /remote/i.test(city);
             const wtype = isRemote ? "remote" : "onsite";
             if (req.work_type === "remote" && !isRemote)
                 continue;
             if (req.location && !city.toLowerCase().includes(req.location.toLowerCase()) && !isRemote)
                 continue;
+            if (!passesRegionFilter(city || "Poland", wtype, region))
+                continue;
             const slug = String(item.id ?? (title + company));
-            const salaryFrom = item.salary_from ?? null;
-            const salaryTo = item.salary_to ?? null;
-            const currency = String(item.currency ?? "PLN");
+            // Fix: salary is nested in employment_types[0].salary, not top-level
+            const empTypes = Array.isArray(item.employment_types)
+                ? item.employment_types
+                : [];
+            const salaryInfo = (empTypes[0]?.salary ?? null);
+            const salaryFrom = salaryInfo?.from ?? null;
+            const salaryTo = salaryInfo?.to ?? null;
+            const currency = String(salaryInfo?.currency ?? "PLN");
             const salary = salaryFrom && salaryTo
                 ? `${currency} ${salaryFrom.toLocaleString()}–${salaryTo.toLocaleString()}`
                 : "";
@@ -399,10 +490,16 @@ export async function staticSearch(req) {
             errors.push(String(r.reason));
         }
     }
-    // Deduplicate by title+company
+    // Safety-net region filter — catches anything the per-source filters missed
+    const region = req.region ?? "global";
+    const regionFiltered = region === "global"
+        ? jobs
+        : jobs.filter((j) => passesRegionFilter(j.location, j.work_type ?? "onsite", region));
+    // Deduplicate by title + company + location (not just title+company,
+    // so the same role in different cities is kept as separate listings)
     const seen = new Set();
-    const unique = jobs.filter((j) => {
-        const k = `${j.title.toLowerCase()}|${j.company.toLowerCase()}`;
+    const unique = regionFiltered.filter((j) => {
+        const k = `${j.title.toLowerCase()}|${j.company.toLowerCase()}|${(j.location ?? "").toLowerCase()}`;
         if (seen.has(k))
             return false;
         seen.add(k);
